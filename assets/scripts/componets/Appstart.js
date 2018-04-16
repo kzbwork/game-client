@@ -1,5 +1,3 @@
-let co = require("co");
-
 function urlParse(){
     var params = {};
     if(window.location == null){
@@ -68,10 +66,9 @@ cc.Class({
             type:cc.Label,
             default:null
         },
-        _stateStr:'',
+        _version:null,
+        _progress:0.0,
     },
-
-    // LIFE-CYCLE CALLBACKS:
 
     onLoad () {
         if(!cc.sys.isNative && cc.sys.isMobile){
@@ -79,35 +76,51 @@ cc.Class({
             cvs.fitHeight = true;
             cvs.fitWidth = true;
         }
-        this.label.string = this._stateStr;
+        this.label.string = "";
         initMgr();
-        this.showSplash()
-        let version= this.getLoacalVersion();
-        //let checkVeision = this.getServerInfo(version);
-        // co(function *(){
-
-        //     // let loadComponents = new Promise(initMgr);
-        //     // yield loadComponents;
-
-        //     // let showSplashInfo = new Promise(this.showSplash)
-        //     // yield showSplashInfo;
-
-        //     // let getLocalV = new Promise(this.getLoacalVersion);
-        //     // let version = yield getLocalV;
-
-        //     // let checkVeision = new Promise(this.getServerInfo(version));
-        //     // yield checkVeision;
-
-        // });
-    },
-
-    getLoacalVersion:function(){
-        var url = cc.url.raw('../../resources/ver/cv.txt');
-        cc.loader.load(url,function(err,data){
-            console.log('current core version:' + data);
-            return data;
+        let self = this;
+        self.showSplash(function(){
+            self.getLoacalVersion(function(){
+                self.getServerInfo(function(){
+                    self.startPreloading()
+                })
+            })
         });
     },
+
+    getLoacalVersion:function(callback){
+        var url = cc.url.raw('resources/texttures/ver/cv.txt');
+        let self = this;
+        cc.loader.load(url,function(err,data){
+            self._version = data;
+            console.log(self._version);
+            callback()
+        });
+    },
+
+    startPreloading:function(){
+        this.log( "正在加载资源，请稍候");
+        var self = this;
+        cc.loader.onProgress = function ( completedCount, totalCount,  item ){
+            if(self._isLoading){
+                self._progress = completedCount/totalCount;
+                self.log(`正在加载资源${_progress}%`);
+            }
+        };
+        
+        cc.loader.loadRes("textures", function (err, assets) {
+            self.onLoadComplete();
+        });      
+    },
+
+    onLoadComplete:function(){
+        this.log("准备登陆");
+        cc.loader.onComplete = null;
+        this._loginFrame = cc.find("Canvas/login_frame");
+        this.log("");
+        this._loginFrame.active = true;
+    },
+    
 
     showSplash:function(callback){
         var self = this;
@@ -115,81 +128,49 @@ cc.Class({
         var FADE_TIME = 500;
         this._splash = cc.find("Canvas/logo");
         this._splash.active = true;
-        var t = Date.now();
-        var fn = function(){
-            var dt = Date.now() - t;
-            if(dt < SHOW_TIME){
-                setTimeout(fn,33);
-            }
-            else {
-                var op = (1 - ((dt - SHOW_TIME) / FADE_TIME)) * 255;
-                if(op < 0){
-                    self._splash.opacity = 0;  
-                    callback()
-                    return;
-                }
-                else{
-                    self._splash.opacity = op;
-                    setTimeout(fn,33);   
-                }
-            }
-        };
-        setTimeout(fn,33);
+        var action = cc.fadeOut(2.0);
+        this._splash.runAction(action);
+        callback();
     },
 
 
-    getServerInfo:function(version){
+    getServerInfo:function(callback){
         var self = this;
         var onGetVersion = function(ret){
-            if(ret.version == null){
+            if(ret == null){
+                self.log( "获取版本号错误");
                 console.log("error.");
             }
             else{
-                cc.vv.SI = ret;
-                if(ret.version != cc.VERSION){
+                if(ret != self._version){
+                    self.log( "版本需要升级");
                     cc.find("Canvas/alert").active = true;
                 }
                 else
                 {
-                    return;
+                    callback();
                 }
             }
         };
         
-        var xhr = null;
-        var complete = false;
         var fnRequest = function(){
-            this._stateStr = "正在连接服务器...";
-            // xhr = cc.vv.http.sendRequest("/get_serverinfo",null,function(ret){
-            //     xhr = null;
-            //     complete = true;
-            //     onGetVersion(ret);
-            // });
+            self.log( "正在连接服务器...");
             setTimeout(function(){
-                onGetVersion("1.1.1");
+                let data = "1.0.1"
+                onGetVersion(data);
             },2000);         
         }
-        
-        var fn = function(){
-            if(!complete){
-                if(xhr){
-                    xhr.abort();
-                    this._stateStr = "连接失败，即将重试";
-                    setTimeout(function(){
-                        fnRequest();
-                    },5000);
-                }
-                else{
-                    fnRequest();
-                }
-            }
-        };
-        fn();
+
+         fnRequest();
     },
 
     onBtnDownloadClicked:function(){
         cc.sys.openURL(cc.vv.SI.appweb);
     },
+
+    log:function(str){
+        this.label.string = str;
+    }
 
     // update (dt) {},
 });
